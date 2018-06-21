@@ -7,13 +7,13 @@ description:
 license:             MIT
 license-file:        LICENSE
 author:              Danny Gratzer
-maintainer:          jozefg@cmu.edu
+maintainer:          harendra.kumar@gmail.com
 category:            Language
 build-type:          Simple
 cabal-version:       >=1.10
 source-repository head
-  type:     hg
-  location: http://bitbucket.org/jozefg/ds-kanren
+  type:     git
+  location: http://github.com/harendra-kumar/ds-kanren
 
 library
   exposed-modules:     Language.DSKanren
@@ -24,7 +24,8 @@ library
                      , logict
   hs-source-dirs:      src
   default-language:    Haskell2010
-Test-Suite test-unify:
+
+Test-Suite test-unify
   hs-source-dirs: test
   type:               exitcode-stdio-1.0
   main-is:            Unify.hs
@@ -35,7 +36,8 @@ Test-Suite test-unify:
                     , QuickCheck
                     , base >=4 && <5
   default-language:    Haskell2010
-Test-Suite test-list-ops:
+
+Test-Suite test-list-ops
   hs-source-dirs: test
   type:               exitcode-stdio-1.0
   main-is:            List.hs
