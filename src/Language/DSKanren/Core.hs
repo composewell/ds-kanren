@@ -12,8 +12,10 @@ module Language.DSKanren.Core ( Term(..)
                               , success
                               , currentGoal
                               , run ) where
-import           Control.Monad.Logic
+import           Data.Functor.Identity (Identity, runIdentity)
 import           Data.String
+import           Streamly (SerialT, wSerially, wSerial, adapt)
+import qualified Streamly.Prelude as S
 import qualified Data.Map            as M
 
 -- | The abstract type of variables. As a consumer you should never
@@ -83,6 +85,8 @@ unify l r sol= case (l, r) of
   (t, Var i) | i `notIn` t -> Just (extend i t sol)
   _ -> Nothing
 
+type Logic a = SerialT Identity a
+
 type Neq = (Term, Term)
 data State = State { sol :: Sol
                    , var :: Var
@@ -100,7 +104,7 @@ checkNeqs s@State{..} = foldr go (return s) neq
   where go (l, r) m =
           case unify (canonize sol l) (canonize sol r) sol of
            Nothing -> m
-           Just badSol -> if domain badSol == domain sol then mzero else m
+           Just badSol -> if domain badSol == domain sol then S.nil else m
         domain = M.keys
 
 -- | Equating two terms will attempt to unify them and backtrack if
@@ -109,7 +113,7 @@ checkNeqs s@State{..} = foldr go (return s) neq
 (===) l r = Predicate $ \s@State {..} ->
   case unify (canonize sol l) (canonize sol r) sol of
    Just sol' -> checkNeqs s{sol = sol'}
-   Nothing   -> mzero
+   Nothing   -> S.nil
 
 -- | The opposite of unification. If any future unification would
 -- cause these two terms to become equal we'll backtrack.
@@ -125,19 +129,20 @@ fresh withTerm =
 -- | Conjunction. This will return solutions that satsify both the
 -- first and second predicate.
 conj :: Predicate -> Predicate -> Predicate
-conj p1 p2 = Predicate $ \s -> unPred p1 s >>- unPred p2
+conj p1 p2 = Predicate $ \s ->
+    wSerially $ (adapt $ unPred p1 s) >>= \x -> adapt (unPred p2 x)
 
 -- | Disjunction. This will return solutions that satisfy either the
 -- first predicate or the second.
 disconj :: Predicate -> Predicate -> Predicate
-disconj p1 p2 = Predicate $ \s -> unPred p1 s `interleave` unPred p2 s
+disconj p1 p2 = Predicate $ \s -> unPred p1 s `wSerial` unPred p2 s
 
 -- | The Eeyore of predicates, always fails. This is mostly useful as
 -- a way of pruning out various conditions, as in
 -- @'conj' (a '===' b) 'failure'@. This is also an identity for
 -- 'disconj'.
 failure :: Predicate
-failure = Predicate $ const mzero
+failure = Predicate $ const S.nil
 
 -- | The Tigger of predicates! always passes. This isn't very useful
 -- on it's own, but is helpful when building up new combinators. This
@@ -152,6 +157,6 @@ currentGoal = Var (V 0)
 
 -- | Run a program and find all solutions for the parametrized term.
 run :: (Term -> Predicate) -> [(Term, [Neq])]
-run mkProg = map answer . observeAll $ prog
+run mkProg = map answer . runIdentity . S.toList $ prog
   where prog = unPred (fresh mkProg) (State M.empty (V 0) [])
         answer State{..} = (canonize sol . Var $ V 0, neq)
